@@ -8,17 +8,7 @@ s=2.*cos(2.*pi.*(80.*t))+(1+0.5.*cos(2.*t)).*exp(-t/10).*cos(10.*pi.*(8.*t+6.*t.
 [stTFR,f]= ST(s, t);
 df=f(2)-f(1);
 magnitude_s=abs(stTFR);
-x=zeros(1,length(s));
-for t_index=1:length(t )
-    for f_index=1:length(f )
-        for tau=1:length(t )
-            x(t_index)=stTFR(f_index,tau)*exp(1i*2*pi*f(f_index)...
-                *t(t_index))*dt+x(t_index);
-        end        
-    end
-    x(t_index)=x(t_index)*df;
-end
-real_x=real(x);
+real_x = real(sum(stTFR, 1) * df);
 figure(1);
 p1=plot(t,s,'b-');
 hold on;
