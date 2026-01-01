@@ -5,9 +5,11 @@ function wwost_timevarying_demo()
 %   S-transform magnitude over frequency at each time sample.
 %
 %   Steps:
-%     1) Compute the baseline S-transform at p = 1 and its energy.
+%     1) Compute the baseline S-transform at p = 1 and its energy using the
+%        positive-frequency (half-spectrum) with non-DC bins doubled to
+%        approximate full-spectrum energy.
 %     2) For each p in p_list, compute S_p, normalize using the baseline
-%        energy, and evaluate CM_t(p).
+%        energy, and evaluate CM_t(p) on the same half-spectrum grid.
 %     3) Derive p_opt(t) = argmax_p CM_t(p).
 %     4) Build the WWOST time-frequency map by selecting columns from the
 %        best-performing S_p at each time index.
@@ -21,9 +23,10 @@ function wwost_timevarying_demo()
     num_p = numel(p_list);
 
     % Baseline transform at p = 1.
-    [S_baseline, f] = ST(s, t, 1);
+    [S_baseline_full, f_full] = ST(s, t, 1);
+    [f, S_baseline, weights] = positive_spectrum(f_full, S_baseline_full);
     df = f(2) - f(1);
-    baseline_energy = sqrt(sum(abs(S_baseline).^2, 'all') * dt * df);
+    baseline_energy = sqrt(sum(weights(:) .* sum(abs(S_baseline).^2, 2)) * dt * df);
     S_baseline = S_baseline / baseline_energy;
 
     num_f = numel(f);
@@ -35,7 +38,9 @@ function wwost_timevarying_demo()
 
     for idx = 1:num_p
         p = p_list(idx);
-        [S_p, f_cur] = ST(s, t, p);
+        [S_p_full, f_cur_full] = ST(s, t, p);
+        [f_cur, S_p] = positive_spectrum(f_cur_full, S_p_full);
+
         if numel(f_cur) ~= num_f || max(abs(f_cur - f)) > 1e-9
             error('Frequency grids do not match across p values.');
         end
@@ -44,7 +49,7 @@ function wwost_timevarying_demo()
         S_p = S_p / baseline_energy;
 
         S_stack(:, :, idx) = S_p;
-        L1_t = df * sum(abs(S_p), 1);
+        L1_t = df * sum(weights(:) .* abs(S_p), 1);
         CM_t(idx, :) = 1 ./ max(L1_t, eps);
     end
 
@@ -109,3 +114,16 @@ function [t, s] = demo_signal()
     s = tone1 + chirp1 + burst;
 end
 
+function [f_pos, S_pos, weights] = positive_spectrum(f, S)
+%POSITIVE_SPECTRUM Extract non-negative frequencies with dimension safety.
+    pos_idx = f >= 0;
+    f_pos = f(pos_idx);
+
+    subs = repmat({':'}, 1, ndims(S));
+    subs{1} = pos_idx;
+    S_pos = S(subs{:});
+
+    % Double non-DC bins to approximate full-spectrum energy from half-spectrum.
+    weights = ones(size(f_pos));
+    weights(f_pos > 0) = 2;
+end
