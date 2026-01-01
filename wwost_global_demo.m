@@ -8,7 +8,9 @@ function wwost_global_demo()
 %     1) Generates a test signal.
 %     2) Defines a candidate list of p values.
 %     3) Computes S_p for each p, normalizes it to unit L2 energy
-%        (integrated over time and frequency), and evaluates CM(p).
+%        (integrated over time and frequency), and evaluates CM(p) using
+%        the positive-frequency (half-spectrum) with non-DC bins doubled to
+%        approximate full-spectrum energy.
 %     4) Picks p_opt = argmax_p CM(p).
 %     5) Recomputes and visualizes the p = 1 and p = p_opt transforms with
 %        shared color limits, and annotates p_opt.
@@ -30,7 +32,8 @@ function wwost_global_demo()
     % Compute transforms, normalize to unit L2 energy, and evaluate CM.
     for idx = 1:num_p
         p = p_list(idx);
-        [S_p, f] = ST(s, t, p);
+        [S_p_full, f_full] = ST(s, t, p);
+        [f, S_p, weights] = positive_spectrum(f_full, S_p_full);
 
         if isempty(f_ref)
             f_ref = f;
@@ -41,13 +44,15 @@ function wwost_global_demo()
             end
         end
 
-        energy = sqrt(sum(abs(S_p).^2, 'all') * dt * df);
+        % Normalize using the positive-frequency (half-spectrum) energy,
+        % doubling non-DC bins to approximate full-spectrum energy.
+        energy = sqrt(sum(weights(:) .* sum(abs(S_p).^2, 2)) * dt * df);
         if energy == 0
             error('Zero transform energy encountered.');
         end
         S_norm{idx} = S_p / energy;
 
-        L1 = sum(abs(S_norm{idx}), 'all') * dt * df;
+        L1 = sum(weights(:) .* sum(abs(S_norm{idx}), 2)) * dt * df;
         CM(idx) = 1 ./ max(L1, eps);
     end
 
@@ -56,10 +61,14 @@ function wwost_global_demo()
     p_opt = p_list(opt_idx);
 
     % Recompute canonical transforms for plotting.
-    [S_p1, f] = ST(s, t, 1);
-    [S_popt, ~] = ST(s, t, p_opt);
-    energy_p1 = sqrt(sum(abs(S_p1).^2, 'all') * dt * df);
-    energy_popt = sqrt(sum(abs(S_popt).^2, 'all') * dt * df);
+    [S_p1_full, f_full] = ST(s, t, 1);
+    [f, S_p1, weights] = positive_spectrum(f_full, S_p1_full);
+
+    [S_popt_full, ~] = ST(s, t, p_opt);
+    [~, S_popt] = positive_spectrum(f_full, S_popt_full);
+
+    energy_p1 = sqrt(sum(weights(:) .* sum(abs(S_p1).^2, 2)) * dt * df);
+    energy_popt = sqrt(sum(weights(:) .* sum(abs(S_popt).^2, 2)) * dt * df);
     S_p1 = S_p1 / energy_p1;
     S_popt = S_popt / energy_popt;
 
@@ -116,3 +125,16 @@ function [t, s] = demo_signal()
     s = tone1 + chirp1 + burst;
 end
 
+function [f_pos, S_pos, weights] = positive_spectrum(f, S)
+%POSITIVE_SPECTRUM Extract non-negative frequencies with dimension safety.
+    pos_idx = f >= 0;
+    f_pos = f(pos_idx);
+
+    subs = repmat({':'}, 1, ndims(S));
+    subs{1} = pos_idx;
+    S_pos = S(subs{:});
+
+    % Double non-DC bins to approximate full-spectrum energy from half-spectrum.
+    weights = ones(size(f_pos));
+    weights(f_pos > 0) = 2;
+end
