@@ -1,4 +1,4 @@
-function [stTFR, f] = ST(s, t)
+function [stTFR, f] = ST(s, t, p)
 %ST Compute the forward S-transform of a 1-D real signal.
 %   [stTFR, f] = ST(s, t) returns the Stockwell transform (S-transform)
 %   time-frequency representation stTFR with size
@@ -10,6 +10,9 @@ function [stTFR, f] = ST(s, t)
 %       s - Real-valued input signal vector.
 %       t - Time vector (must match the length of s and have uniform
 %           spacing).
+%       p - Window-width exponent (scalar, positive). The Gaussian standard
+%           deviation follows sigma(f; p) = 1 / |f|^p, producing the window
+%           factor |f|.^p .* exp(-0.5 * (|f|.^(2*p)) .* t^2). Default: 1.
 %
 %   Outputs:
 %       stTFR - Complex S-transform matrix (frequency x time).
@@ -23,6 +26,11 @@ N = numel(s);
 if numel(t) ~= N
     error('Signal and time vectors must have the same length.');
 end
+
+if nargin < 3 || isempty(p)
+    p = 1;
+end
+validateattributes(p, {'numeric'}, {'scalar', 'real', 'positive'}, mfilename, 'p');
 
 % Sampling characteristics.
 dt = mean(diff(t));
@@ -41,10 +49,12 @@ t_centered = ((0:N-1) - floor(N/2)) * dt;
 modulation = exp(-1j * 2 * pi * (f * t));
 s_mod = modulation .* s;
 
-% Frequency-dependent Gaussian windows (zero-centered).
-gaussian = abs(f) .* exp(-0.5 * ((f.^2) .* (t_centered.^2)));
+% Frequency-dependent Gaussian windows (zero-centered) with exponent p.
+abs_f = abs(f);
+gaussian = (abs_f .^ p) .* exp(-0.5 * ((abs_f .^ (2 * p)) .* (t_centered .^ 2)));
+
 % Handle the zero-frequency row explicitly (limit of the Gaussian window).
-gaussian(f == 0, :) = 1;
+gaussian(abs_f == 0, :) = 1;
 
 % Align zero time to the first element for circular convolution via FFT.
 gaussian_shifted = ifftshift(gaussian, 2);
